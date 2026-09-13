@@ -8710,6 +8710,12 @@ zpool_do_scrub(int argc, char **argv)
 	argc -= optind;
 	argv += optind;
 
+	if (scrub_all && argc > 0) {
+		(void) fprintf(stderr, gettext("-a cannot be combined with "
+		    "individual pools\n"));
+		usage(B_FALSE);
+	}
+
 	if (argc < 1 && !scrub_all) {
 		(void) fprintf(stderr, gettext("missing pool name argument\n"));
 		usage(B_FALSE);
