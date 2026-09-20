@@ -103,8 +103,24 @@ typedef struct refcount {
 #define	zfs_refcount_destroy_many(rc, number) ((rc)->rc_count = 0)
 #define	zfs_refcount_is_zero(rc) (zfs_refcount_count(rc) == 0)
 #define	zfs_refcount_count(rc) atomic_load_64(&(rc)->rc_count)
+/*
+ * Dropping a hold publishes the holder's work with a release.  The thread
+ * that takes the count to zero owns the object, and acquires every other
+ * holder's work before the caller tears it down; the holds that do not
+ * reach zero, which is nearly all of them, do not pay for that acquire.
+ */
+static inline uint64_t
+zfs_refcount_drop(volatile uint64_t *countp, uint64_t number)
+{
+	uint64_t nv = atomic_add_64_nv_release(countp, -(int64_t)number);
+
+	if (nv == 0)
+		membar_consumer();
+	return (nv);
+}
+
 #define	zfs_refcount_add(rc, holder) atomic_inc_64_nv(&(rc)->rc_count)
-#define	zfs_refcount_remove(rc, holder) atomic_dec_64_nv(&(rc)->rc_count)
+#define	zfs_refcount_remove(rc, holder) zfs_refcount_drop(&(rc)->rc_count, 1)
 #define	zfs_refcount_add_few(rc, number, holder) \
 	atomic_add_64(&(rc)->rc_count, number)
 #define	zfs_refcount_remove_few(rc, number, holder) \
@@ -112,7 +128,7 @@ typedef struct refcount {
 #define	zfs_refcount_add_many(rc, number, holder) \
 	atomic_add_64_nv(&(rc)->rc_count, number)
 #define	zfs_refcount_remove_many(rc, number, holder) \
-	atomic_add_64_nv(&(rc)->rc_count, -number)
+	zfs_refcount_drop(&(rc)->rc_count, number)
 #define	zfs_refcount_transfer(dst, src) { \
 	uint64_t __tmp = zfs_refcount_count(src); \
 	atomic_add_64(&(src)->rc_count, -__tmp); \
