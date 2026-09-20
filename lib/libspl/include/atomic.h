@@ -161,6 +161,8 @@ extern void *atomic_add_ptr_nv(volatile void *, ssize_t);
 extern ulong_t atomic_add_long_nv(volatile ulong_t *, long);
 #if defined(_INT64_TYPE)
 extern uint64_t atomic_add_64_nv(volatile uint64_t *, int64_t);
+extern uint64_t atomic_add_64_nv_release(volatile uint64_t *, int64_t);
+extern uint64_t atomic_dec_64_nv_release(volatile uint64_t *);
 #endif
 
 /*

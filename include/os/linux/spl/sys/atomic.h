@@ -64,6 +64,16 @@
 #define	atomic_load_64(v)	atomic64_read((atomic64_t *)(v))
 #define	atomic_store_64(v, x)	atomic64_set((atomic64_t *)(v), x)
 
+/*
+ * Release-ordered forms.  The unsuffixed ones above are fully ordered; these
+ * drop the acquire half for callers that do not need it, such as a reference
+ * count whose holder acquires only on the drop that reaches zero.
+ */
+#define	atomic_add_64_nv_release(v, i)	\
+	atomic64_add_return_release((i), (atomic64_t *)(v))
+#define	atomic_dec_64_nv_release(v)	\
+	atomic64_dec_return_release((atomic64_t *)(v))
+
 #ifdef _LP64
 static __inline__ void *
 atomic_cas_ptr(volatile void *target,  void *cmp, void *newval)

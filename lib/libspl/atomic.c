@@ -169,6 +169,18 @@ ATOMIC_DEC_NV(ulong, ulong_t)
 		return (__atomic_add_fetch(target, bits, __ATOMIC_SEQ_CST)); \
 	}
 
+uint64_t
+atomic_add_64_nv_release(volatile uint64_t *target, int64_t bits)
+{
+	return (__atomic_add_fetch(target, bits, __ATOMIC_RELEASE));
+}
+
+uint64_t
+atomic_dec_64_nv_release(volatile uint64_t *target)
+{
+	return (__atomic_sub_fetch(target, 1, __ATOMIC_RELEASE));
+}
+
 void *
 atomic_add_ptr_nv(volatile void *target, ssize_t bits)
 {

@@ -208,6 +208,34 @@ atomic_dec_64_nv(volatile uint64_t *target)
 }
 
 /*
+ * Release-ordered forms, for a caller that has shown it does not need the
+ * acquire half.  The canonical one is a reference count: dropping a hold
+ * must publish the holder's work, but only the thread that sees the count
+ * reach zero has to acquire everyone else's before it frees the object.
+ *
+ * On the fallback path below atomic_add_64_nv() is already serialised by a
+ * mutex, which orders both halves, so the plain form is the release form.
+ */
+#if defined(__LP64__) || defined(__mips_n32) || \
+	defined(ARM_HAVE_ATOMIC64) || defined(I386_HAVE_ATOMIC64) || \
+	defined(HAS_EMULATED_ATOMIC64)
+static __inline uint64_t
+atomic_add_64_nv_release(volatile uint64_t *target, int64_t delta)
+{
+	spl_atomic_fence_pre();
+	return (atomic_fetchadd_64(target, delta) + delta);
+}
+#else
+#define	atomic_add_64_nv_release(t, d)	atomic_add_64_nv(t, d)
+#endif
+
+static __inline uint64_t
+atomic_dec_64_nv_release(volatile uint64_t *target)
+{
+	return (atomic_add_64_nv_release(target, -1));
+}
+
+/*
  * atomic_swap_*() comes straight from machine/atomic.h and is relaxed there
  * too, so it needs the same treatment.  Defined after the wrappers so that
  * their own calls reach the machine primitive.
