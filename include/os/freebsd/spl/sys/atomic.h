@@ -62,10 +62,40 @@ extern uint64_t atomic_cas_64(volatile uint64_t *target, uint64_t cmp,
 #define	membar_producer()		atomic_thread_fence_rel()
 #define	membar_sync()			atomic_thread_fence_seq_cst()
 
+/*
+ * The common code is written against the Linux SPL, where a value-returning
+ * atomic is fully ordered and a void one is not; see Linux's
+ * Documentation/atomic_t.txt.  FreeBSD's unsuffixed primitives carry no
+ * ordering at all.  That is invisible on x86, where they are LOCK-prefixed
+ * and ordered anyway, and a real hazard on arm64, where they are bare LSE or
+ * LL/SC with only a compiler barrier.  Supply the ordering here rather than
+ * leaving every caller to get a membar pair right.
+ *
+ * Release before and acquire after is what the handoffs in ZFS actually
+ * need, and is cheaper than the sequentially consistent pair Linux
+ * specifies.  Both compile to a compiler barrier on x86.
+ */
+static __inline void
+spl_atomic_fence_pre(void)
+{
+	atomic_thread_fence_rel();
+}
+
+static __inline void
+spl_atomic_fence_post(void)
+{
+	atomic_thread_fence_acq();
+}
+
 static __inline uint32_t
 atomic_add_32_nv(volatile uint32_t *target, int32_t delta)
 {
-	return (atomic_fetchadd_32(target, delta) + delta);
+	uint32_t nv;
+
+	spl_atomic_fence_pre();
+	nv = atomic_fetchadd_32(target, delta) + delta;
+	spl_atomic_fence_post();
+	return (nv);
 }
 
 static __inline uint_t
@@ -102,6 +132,7 @@ atomic_dec_32_nv(volatile uint32_t *target)
 static inline uint32_t
 atomic_cas_32(volatile uint32_t *target, uint32_t cmp, uint32_t newval)
 {
+	spl_atomic_fence_pre();
 #ifdef STRONG_FCMPSET
 	(void) atomic_fcmpset_32(target, &cmp, newval);
 #else
@@ -112,6 +143,7 @@ atomic_cas_32(volatile uint32_t *target, uint32_t cmp, uint32_t newval)
 			break;
 	} while (cmp == expected);
 #endif
+	spl_atomic_fence_post();
 	return (cmp);
 }
 #endif
@@ -128,13 +160,19 @@ atomic_dec_64(volatile uint64_t *target)
 static inline uint64_t
 atomic_add_64_nv(volatile uint64_t *target, int64_t delta)
 {
-	return (atomic_fetchadd_64(target, delta) + delta);
+	uint64_t nv;
+
+	spl_atomic_fence_pre();
+	nv = atomic_fetchadd_64(target, delta) + delta;
+	spl_atomic_fence_post();
+	return (nv);
 }
 
 #ifndef __sparc64__
 static inline uint64_t
 atomic_cas_64(volatile uint64_t *target, uint64_t cmp, uint64_t newval)
 {
+	spl_atomic_fence_pre();
 #ifdef STRONG_FCMPSET
 	(void) atomic_fcmpset_64(target, &cmp, newval);
 #else
@@ -145,6 +183,7 @@ atomic_cas_64(volatile uint64_t *target, uint64_t cmp, uint64_t newval)
 			break;
 	} while (cmp == expected);
 #endif
+	spl_atomic_fence_post();
 	return (cmp);
 }
 #endif
@@ -167,6 +206,38 @@ atomic_dec_64_nv(volatile uint64_t *target)
 {
 	return (atomic_add_64_nv(target, -1));
 }
+
+/*
+ * atomic_swap_*() comes straight from machine/atomic.h and is relaxed there
+ * too, so it needs the same treatment.  Defined after the wrappers so that
+ * their own calls reach the machine primitive.
+ */
+static __inline uint32_t
+spl_atomic_swap_32(volatile uint32_t *target, uint32_t newval)
+{
+	uint32_t old;
+
+	spl_atomic_fence_pre();
+	old = atomic_swap_32(target, newval);
+	spl_atomic_fence_post();
+	return (old);
+}
+
+static __inline uint64_t
+spl_atomic_swap_64(volatile uint64_t *target, uint64_t newval)
+{
+	uint64_t old;
+
+	spl_atomic_fence_pre();
+	old = atomic_swap_64(target, newval);
+	spl_atomic_fence_post();
+	return (old);
+}
+
+#undef	atomic_swap_32
+#undef	atomic_swap_64
+#define	atomic_swap_32(t, v)	spl_atomic_swap_32(t, v)
+#define	atomic_swap_64(t, v)	spl_atomic_swap_64(t, v)
 
 #ifdef __LP64__
 static __inline void *
